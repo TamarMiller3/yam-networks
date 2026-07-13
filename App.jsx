@@ -497,9 +497,16 @@ function JobRow({ job, onClick }) {
 
 /* ----------------------------- טופס עבודה ----------------------------- */
 function JobForm({ job, clients, onSave, onClose, onCreateClient }) {
-  const [f, setF] = useState(job || blankJob());
+  /* עבודות שנוצרו לפני המעבר למזהה ייחודי — משייכים אותן ללקוח לפי השם */
+  const heal = (j) => {
+    if (!j) return blankJob();
+    if (j.clientId) return j;
+    const match = (clients || []).find((c) => c.name && j.clientName && c.name.trim() === j.clientName.trim());
+    return match ? { ...j, clientId: match.id } : j;
+  };
+  const [f, setF] = useState(() => heal(job));
   const set = (k, v) => setF((s) => ({ ...s, [k]: v }));
-  const valid = f.title.trim() && f.clientId && (f.type !== OTHER || (f.typeOther || "").trim());
+  const valid = f.title.trim() && (f.clientId || (f.clientName || "").trim()) && (f.type !== OTHER || (f.typeOther || "").trim());
   const est = calcEstPayment(f.invoiceDate, f.paymentTerms);
   const seg = (on) => `flex-1 text-sm py-2 rounded-lg border transition-colors ${on ? "bg-slate-900 text-white border-slate-900" : "bg-white text-slate-600 border-slate-300"}`;
 
@@ -515,6 +522,9 @@ function JobForm({ job, clients, onSave, onClose, onCreateClient }) {
               onPick={(c) => setF((s) => ({ ...s, clientId: c.id, clientName: c.name,
                 clientPhone: c.phone || s.clientPhone, clientEmail: c.email || s.clientEmail,
                 address: s.address || c.address || "" }))} />
+            {!f.clientId && f.clientName && (
+              <p className="text-xs text-amber-700 mt-1">רשום כאן: <b>{f.clientName}</b> — בחרו אותו מהרשימה (או הוסיפו כלקוח חדש) כדי לקשר את העבודה לכרטיס הלקוח.</p>
+            )}
           </Field>
           <div className="grid grid-cols-2 gap-3">
             <Field label="טלפון"><Input value={f.clientPhone} onChange={(e) => set("clientPhone", e.target.value)} placeholder="050-0000000" /></Field>
@@ -1120,7 +1130,14 @@ function QuotesTab({ clients, onCreateClient }) {
 }
 
 function QuoteBuilder({ initial, clients, onSave, onBack, onCreateClient }) {
-  const [q, setQ] = useState(initial);
+  /* הצעות שנוצרו לפני המעבר למזהה ייחודי — משייכות ללקוח לפי השם */
+  const healQ = (x) => {
+    if (x.clientId) return x;
+    const nm = x.client && x.client.name;
+    const match = (clients || []).find((c) => c.name && nm && c.name.trim() === nm.trim());
+    return match ? { ...x, clientId: match.id } : x;
+  };
+  const [q, setQ] = useState(() => healQ(initial));
   const [exporting, setExporting] = useState(false);
   const [savedMsg, setSavedMsg] = useState("");
   const t = quoteTotals(q);
@@ -1179,6 +1196,9 @@ function QuoteBuilder({ initial, clients, onSave, onBack, onCreateClient }) {
           <ClientPicker clients={clients || []} value={q.clientId} onCreate={onCreateClient}
             onPick={(c) => setQ((s) => ({ ...s, clientId: c.id,
               client: { ...s.client, name: c.name, phone: c.phone || s.client.phone, email: c.email || s.client.email, address: c.address || s.client.address } }))} />
+          {!q.clientId && q.client.name && (
+            <p className="text-xs text-amber-700 mt-1">רשום כאן: <b>{q.client.name}</b> — בחרו אותו מהרשימה כדי לקשר את ההצעה לכרטיס הלקוח.</p>
+          )}
         </Field>
         <Field label="חברה"><Input value={q.client.company} onChange={(e) => setClient("company", e.target.value)} /></Field>
         <div className="grid grid-cols-2 gap-3">
