@@ -94,7 +94,7 @@ const jobType = (j) => (j.type === OTHER && j.typeOther) ? j.typeOther : j.type;
 const ALLOCATION_THRESHOLD = 5000;
 
 const blankJob = () => ({
-  title: "", clientName: "", clientPhone: "", clientEmail: "",
+  title: "", clientId: "", clientName: "", clientPhone: "", clientEmail: "",
   type: JOB_TYPES[0], status: "new", priority: "normal",
   typeOther: "",
   scheduledDate: todayISO(), address: "", price: "", notes: "",
@@ -259,6 +259,12 @@ function MainApp() {
     else await saveClients([{ ...cl, id: uid() }, ...clients]);
     setEditingClient(null);
   };
+  /* יצירת לקוח מתוך טופס אחר — מחזירה את הלקוח שנוצר */
+  const createClient = async (cl) => {
+    const created = { ...cl, id: uid() };
+    await saveClients([created, ...clients]);
+    return created;
+  };
   const deleteClient = async (id) => saveClients(clients.filter((x) => x.id !== id));
 
   const addDoc = async (jobId, meta, dataUrl) => {
@@ -310,16 +316,16 @@ function MainApp() {
           <JobsView jobs={jobs} onOpenJob={setOpenJob} onNew={() => setEditingJob("new")} />
         ) : view === "clients" ? (
           <ClientsTab clients={clients} jobs={jobs} onOpenJob={setOpenJob}
-            onNewJob={(cl) => setEditingJob({ ...blankJob(), clientName: cl.name, clientPhone: cl.phone || "", clientEmail: cl.email || "", address: cl.address || "" })}
+            onNewJob={(cl) => setEditingJob({ ...blankJob(), clientId: cl.id, clientName: cl.name, clientPhone: cl.phone || "", clientEmail: cl.email || "", address: cl.address || "" })}
             onNew={() => setEditingClient("new")} onEdit={setEditingClient} onDelete={deleteClient} />
         ) : (
-          <QuotesTab clients={clients} />
+          <QuotesTab clients={clients} onCreateClient={createClient} />
         )}
       </main>
 
       {editingJob && (
         <JobForm job={editingJob === "new" ? null : editingJob} clients={clients}
-          onSave={upsertJob} onClose={() => setEditingJob(null)} />
+          onSave={upsertJob} onClose={() => setEditingJob(null)} onCreateClient={createClient} />
       )}
       {openJob && (
         <JobDetail job={jobs.find((j) => j.id === openJob.id) || openJob}
@@ -490,10 +496,10 @@ function JobRow({ job, onClick }) {
 }
 
 /* ----------------------------- טופס עבודה ----------------------------- */
-function JobForm({ job, clients, onSave, onClose }) {
+function JobForm({ job, clients, onSave, onClose, onCreateClient }) {
   const [f, setF] = useState(job || blankJob());
   const set = (k, v) => setF((s) => ({ ...s, [k]: v }));
-  const valid = f.title.trim() && f.clientName.trim() && (f.type !== OTHER || (f.typeOther || "").trim());
+  const valid = f.title.trim() && f.clientId && (f.type !== OTHER || (f.typeOther || "").trim());
   const est = calcEstPayment(f.invoiceDate, f.paymentTerms);
   const seg = (on) => `flex-1 text-sm py-2 rounded-lg border transition-colors ${on ? "bg-slate-900 text-white border-slate-900" : "bg-white text-slate-600 border-slate-300"}`;
 
@@ -504,16 +510,16 @@ function JobForm({ job, clients, onSave, onClose }) {
           <Field label="כותרת העבודה *">
             <Input value={f.title} onChange={(e) => set("title", e.target.value)} placeholder="לדוגמה: התקנת ארון תקשורת – משרד קומה 2" />
           </Field>
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="שם לקוח *">
-              <Input value={f.clientName} onChange={(e) => set("clientName", e.target.value)} list="clients-dl" placeholder="שם" />
-              <datalist id="clients-dl">{clients.map((c) => <option key={c.id} value={c.name} />)}</datalist>
-            </Field>
-            <Field label="טלפון"><Input value={f.clientPhone} onChange={(e) => set("clientPhone", e.target.value)} placeholder="050-0000000" /></Field>
-          </div>
-          <Field label="כתובת מייל">
-            <Input type="email" value={f.clientEmail} onChange={(e) => set("clientEmail", e.target.value)} placeholder="name@example.com" />
+          <Field label="לקוח *">
+            <ClientPicker clients={clients} value={f.clientId} onCreate={onCreateClient}
+              onPick={(c) => setF((s) => ({ ...s, clientId: c.id, clientName: c.name,
+                clientPhone: c.phone || s.clientPhone, clientEmail: c.email || s.clientEmail,
+                address: s.address || c.address || "" }))} />
           </Field>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="טלפון"><Input value={f.clientPhone} onChange={(e) => set("clientPhone", e.target.value)} placeholder="050-0000000" /></Field>
+            <Field label="כתובת מייל"><Input type="email" value={f.clientEmail} onChange={(e) => set("clientEmail", e.target.value)} placeholder="name@example.com" /></Field>
+          </div>
           <div className="grid grid-cols-2 gap-3">
             <Field label="סוג עבודה">
               <Select value={f.type} onChange={(e) => set("type", e.target.value)}>{JOB_TYPES.map((t) => <option key={t}>{t}</option>)}</Select>
@@ -839,11 +845,13 @@ function ClientsTab({ clients, jobs, onOpenJob, onNewJob, onNew, onEdit, onDelet
     a.download = ("הצעת_מחיר_" + (qt.quoteNumber || "") + "_" + ((qt.client && qt.client.name) || "")).replace(/[\\/:*?"<>|\s]+/g, "_") + ".html";
     document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
   };
-  const countFor = (name) => jobs.filter((j) => j.clientName === name).length;
+  const countFor = (c) => jobs.filter((j) => j.clientId ? j.clientId === c.id : j.clientName === c.name).length;
 
   if (selected) {
-    const clientJobs = jobs.filter((j) => j.clientName === selected.name).sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
-    const clientQuotes = quotes.filter((qt) => (qt.client && qt.client.name) === selected.name).sort((a, b) => new Date(b.updatedAt || b.date) - new Date(a.updatedAt || a.date));
+    const clientJobs = jobs.filter((j) => j.clientId ? j.clientId === selected.id : j.clientName === selected.name)
+      .sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
+    const clientQuotes = quotes.filter((qt) => qt.clientId ? qt.clientId === selected.id : ((qt.client && qt.client.name) === selected.name))
+      .sort((a, b) => new Date(b.updatedAt || b.date) - new Date(a.updatedAt || a.date));
     const sum = (arr) => arr.reduce((s, j) => s + (Number(j.price) || 0), 0);
     const active = clientJobs.filter((j) => ["new", "in_progress", "waiting"].includes(j.status)).length;
     const invoiced = sum(clientJobs.filter((j) => j.invoiceIssued));
@@ -924,7 +932,7 @@ function ClientsTab({ clients, jobs, onOpenJob, onNewJob, onNew, onEdit, onDelet
                     <p className="font-medium text-slate-800 truncate">הצעה #{qt.quoteNumber}</p>
                     <p className="text-sm text-slate-500">{fmtDate(qt.date)} · {ils(quoteTotals(qt).total)}</p>
                   </div>
-                  <button onClick={() => exportQuoteDoc(qt, "print")} className="p-2 text-slate-400 hover:text-cyan-700"><Printer size={16} /></button>
+                  <button onClick={() => exportQuoteDoc(qt, "print")} title="הדפסה" className="p-2 text-slate-400 hover:text-cyan-700"><Printer size={16} /></button>
                   <button onClick={() => exportQuoteDoc(qt, "file")} className="p-2 text-slate-400 hover:text-cyan-700"><Download size={16} /></button>
                 </div>
               ))}
@@ -997,7 +1005,7 @@ function ClientsTab({ clients, jobs, onOpenJob, onNewJob, onNew, onEdit, onDelet
                 <p className="font-semibold text-slate-800">{c.name}</p>
                 {c.phone && <p className="text-sm text-slate-500 flex items-center gap-1 mt-1"><Phone size={13} />{c.phone}</p>}
                 {c.email && <p className="text-sm text-slate-500 flex items-center gap-1"><Mail size={13} />{c.email}</p>}
-                <p className="text-xs text-cyan-700 mt-2">{countFor(c.name)} עבודות · לחצו לצפייה</p>
+                <p className="text-xs text-cyan-700 mt-2">{countFor(c)} עבודות · לחצו לצפייה</p>
               </button>
               <div className="flex gap-1 shrink-0">
                 <button onClick={() => onEdit(c)} className="p-1.5 text-slate-400 hover:text-cyan-700"><Pencil size={15} /></button>
@@ -1032,7 +1040,7 @@ function ClientForm({ client, onSave, onClose }) {
 }
 
 /* ----------------------------- הצעות מחיר ----------------------------- */
-function QuotesTab({ clients }) {
+function QuotesTab({ clients, onCreateClient }) {
   const [quotes, setQuotes] = useState([]);
   const [business, setBusiness] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -1071,11 +1079,11 @@ function QuotesTab({ clients }) {
   if (editing) {
     const initial = editing === "new"
       ? { quoteNumber: nextNumber(), date: todayISO(), validUntil: addDays(todayISO(), 30),
-          business: business, client: { name: "", company: "", phone: "", email: "", address: "" },
+          business: business, clientId: "", client: { name: "", company: "", phone: "", email: "", address: "" },
           items: [{ id: uid(), desc: "", qty: 1, unitPrice: "" }], vatRate: 18, notes: "תוקף ההצעה: 30 יום. תנאי תשלום: שוטף + 30." }
       : { ...editing, business: editing.business || business };
     return <QuoteBuilder key={editing === "new" ? "new" : editing.id} initial={initial} clients={clients}
-      onSave={onSave} onBack={() => setEditing(null)} />;
+      onSave={onSave} onBack={() => setEditing(null)} onCreateClient={onCreateClient} />;
   }
 
   return (
@@ -1099,7 +1107,8 @@ function QuotesTab({ clients }) {
                     <p className="font-medium text-slate-800 truncate">הצעה #{q.quoteNumber} · {q.client?.name || "ללא לקוח"}</p>
                     <p className="text-sm text-slate-500">{fmtDate(q.date)} · {ils(t.total)}</p>
                   </button>
-                  <button onClick={() => onDelete(q.id)} className="p-2 text-slate-400 hover:text-rose-600"><Trash2 size={16} /></button>
+                  <button onClick={() => setEditing(q)} title="עריכה" className="p-2 text-slate-400 hover:text-cyan-700"><Pencil size={16} /></button>
+                  <button onClick={() => onDelete(q.id)} title="מחיקה" className="p-2 text-slate-400 hover:text-rose-600"><Trash2 size={16} /></button>
                 </li>
               );
             })}
@@ -1110,7 +1119,7 @@ function QuotesTab({ clients }) {
   );
 }
 
-function QuoteBuilder({ initial, clients, onSave, onBack }) {
+function QuoteBuilder({ initial, clients, onSave, onBack, onCreateClient }) {
   const [q, setQ] = useState(initial);
   const [exporting, setExporting] = useState(false);
   const [savedMsg, setSavedMsg] = useState("");
@@ -1166,13 +1175,12 @@ function QuoteBuilder({ initial, clients, onSave, onBack }) {
       </Section>
 
       <Section title="פרטי הלקוח">
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="שם לקוח">
-            <Input value={q.client.name} onChange={(e) => setClient("name", e.target.value)} list="quote-clients-dl" />
-            <datalist id="quote-clients-dl">{(clients || []).map((c) => <option key={c.id} value={c.name} />)}</datalist>
-          </Field>
-          <Field label="חברה"><Input value={q.client.company} onChange={(e) => setClient("company", e.target.value)} /></Field>
-        </div>
+        <Field label="לקוח *">
+          <ClientPicker clients={clients || []} value={q.clientId} onCreate={onCreateClient}
+            onPick={(c) => setQ((s) => ({ ...s, clientId: c.id,
+              client: { ...s.client, name: c.name, phone: c.phone || s.client.phone, email: c.email || s.client.email, address: c.address || s.client.address } }))} />
+        </Field>
+        <Field label="חברה"><Input value={q.client.company} onChange={(e) => setClient("company", e.target.value)} /></Field>
         <div className="grid grid-cols-2 gap-3">
           <Field label="טלפון"><Input value={q.client.phone} onChange={(e) => setClient("phone", e.target.value)} /></Field>
           <Field label="מייל"><Input value={q.client.email} onChange={(e) => setClient("email", e.target.value)} /></Field>
@@ -1224,6 +1232,54 @@ function QuoteBuilder({ initial, clients, onSave, onBack }) {
         {savedMsg && <span className="text-sm text-emerald-600">{savedMsg}</span>}
         {exporting && <span className="text-xs text-slate-400">מכין מסמך…</span>}
       </div>
+    </div>
+  );
+}
+
+/* ----------------------------- בורר לקוח (רשימה + הוספה מהירה) ----------------------------- */
+function ClientPicker({ clients, value, onPick, onCreate }) {
+  const [adding, setAdding] = useState(false);
+  const [nc, setNc] = useState({ name: "", phone: "", email: "", address: "" });
+  const setF = (k, v) => setNc((s) => ({ ...s, [k]: v }));
+
+  const create = async () => {
+    if (!nc.name.trim()) return;
+    const created = await onCreate(nc);
+    if (created) { onPick(created); setAdding(false); setNc({ name: "", phone: "", email: "", address: "" }); }
+  };
+
+  if (adding) {
+    return (
+      <div className="border border-cyan-300 bg-cyan-50 rounded-lg p-3 space-y-2">
+        <p className="text-sm font-semibold text-cyan-800">לקוח חדש</p>
+        <Input autoFocus value={nc.name} onChange={(e) => setF("name", e.target.value)} placeholder="שם הלקוח *" />
+        <div className="grid grid-cols-2 gap-2">
+          <Input value={nc.phone} onChange={(e) => setF("phone", e.target.value)} placeholder="טלפון" />
+          <Input value={nc.email} onChange={(e) => setF("email", e.target.value)} placeholder="מייל" />
+        </div>
+        <Input value={nc.address} onChange={(e) => setF("address", e.target.value)} placeholder="כתובת" />
+        <div className="flex gap-2">
+          <button onClick={create} disabled={!nc.name.trim()}
+            className="text-sm px-3 py-1.5 rounded-lg bg-cyan-600 text-white hover:bg-cyan-700 disabled:opacity-40">שמירה ובחירה</button>
+          <button onClick={() => setAdding(false)} className="text-sm px-3 py-1.5 rounded-lg border border-slate-300 text-slate-600">ביטול</button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex gap-2">
+      <Select value={value || ""} onChange={(e) => {
+        const c = clients.find((x) => x.id === e.target.value);
+        if (c) onPick(c);
+      }}>
+        <option value="">— בחרו לקוח —</option>
+        {clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+      </Select>
+      <button onClick={() => setAdding(true)} type="button"
+        className="flex items-center gap-1 text-sm px-3 py-2 rounded-lg border border-cyan-300 text-cyan-700 hover:bg-cyan-50 whitespace-nowrap">
+        <Plus size={15} /> חדש
+      </button>
     </div>
   );
 }
