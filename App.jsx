@@ -88,11 +88,15 @@ const BUSINESS = { name: "ים רשתות תקשורת", taxId: "058830126", pho
 const mergeBiz = (st) => { const out = { ...BUSINESS }; if (st) for (const k in st) if (st[k]) out[k] = st[k]; return out; };
 
 const TAGLINE = "תכנון והקמת רשתות תקשורת, התקנת מערכות וציוד תקשורת";
+const OTHER = "אחר";
+/* סוג העבודה להצגה: אם נבחר "אחר", מוצג הטקסט החופשי שהוזן */
+const jobType = (j) => (j.type === OTHER && j.typeOther) ? j.typeOther : j.type;
 const ALLOCATION_THRESHOLD = 5000;
 
 const blankJob = () => ({
   title: "", clientName: "", clientPhone: "", clientEmail: "",
   type: JOB_TYPES[0], status: "new", priority: "normal",
+  typeOther: "",
   scheduledDate: todayISO(), address: "", price: "", notes: "",
   quoteNumber: "", quoteDate: "",
   invoiceIssued: false, invoiceNumber: "", invoiceDate: "", allocationNumber: "",
@@ -102,6 +106,7 @@ const blankJob = () => ({
 /* מסמך HTML מסודר להדפסה / הורדה */
 function renderJobHTML(job, docs) {
   const stLabel = STATUSES[job.status]?.label || "—";
+  const typeLabel = jobType(job);
   const est = calcEstPayment(job.invoiceDate, job.paymentTerms);
   const termLabel = PAYMENT_TERMS.find((t) => t.v === job.paymentTerms)?.label || "—";
   const methodLabel = PAYMENT_METHODS[job.paymentMethod] || "—";
@@ -132,11 +137,11 @@ td{padding:3px 0}
 @media print{body{margin:0}}
 </style></head><body>
 <div class="top">
-  <div><div class="brand">ניהול עבודות · רשתות מחשבים</div><h1>${esc(job.title)}</h1><div class="brand">${esc(job.type || "")}</div></div>
+  <div><div class="brand">ניהול עבודות · רשתות מחשבים</div><h1>${esc(job.title)}</h1><div class="brand">${esc(typeLabel || "")}</div></div>
   <div class="status">${esc(stLabel)}</div>
 </div>
 ${section("פרטי לקוח", r("שם לקוח", job.clientName) + r("טלפון", job.clientPhone) + r("מייל", job.clientEmail) + r("כתובת", job.address))}
-${section("פרטי עבודה", r("סוג עבודה", job.type) + r("עדיפות", PRIORITIES[job.priority]?.label) + r("תאריך", fmtDate(job.scheduledDate)) + r("מחיר", ils(job.price)))}
+${section("פרטי עבודה", r("סוג עבודה", typeLabel) + r("עדיפות", PRIORITIES[job.priority]?.label) + r("תאריך", fmtDate(job.scheduledDate)) + r("מחיר", ils(job.price)))}
 ${job.notes ? `<h2>תיאור העבודה</h2><div class="desc">${esc(job.notes)}</div>` : ""}
 ${section("הצעת מחיר", r("מספר הצעה", job.quoteNumber) + r("תאריך", fmtDate(job.quoteDate)))}
 ${section("חשבונית", r("יצאה חשבונית", job.invoiceIssued ? "כן" : "לא") + r("מספר חשבונית", job.invoiceNumber) + r("תאריך", fmtDate(job.invoiceDate)) + r("מספר הקצאה", job.allocationNumber))}
@@ -418,7 +423,7 @@ function JobsView({ jobs, onOpenJob, onNew }) {
       .filter((j) => status === "all" ? true : j.status === status)
       .filter((j) => {
         if (!q.trim()) return true;
-        const t = (j.title + " " + j.clientName + " " + (j.address || "") + " " + (j.type || "") + " " + (j.invoiceNumber || "") + " " + (j.quoteNumber || "")).toLowerCase();
+        const t = (j.title + " " + j.clientName + " " + (j.address || "") + " " + (jobType(j) || "") + " " + (j.invoiceNumber || "") + " " + (j.quoteNumber || "")).toLowerCase();
         return t.includes(q.toLowerCase());
       })
       .sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
@@ -472,7 +477,7 @@ function JobRow({ job, onClick }) {
               <span className={`text-xs ${PRIORITIES[job.priority].chip}`}>{PRIORITIES[job.priority].label}</span>
             )}
           </div>
-          <p className="text-sm text-slate-500 truncate">{job.clientName}{job.type ? " · " + job.type : ""}</p>
+          <p className="text-sm text-slate-500 truncate">{job.clientName}{job.type ? " · " + jobType(job) : ""}</p>
         </div>
         <div className="text-left shrink-0">
           <span className={`text-xs px-2 py-1 rounded-full ${st.chip}`}>{st.label}</span>
@@ -488,13 +493,13 @@ function JobRow({ job, onClick }) {
 function JobForm({ job, clients, onSave, onClose }) {
   const [f, setF] = useState(job || blankJob());
   const set = (k, v) => setF((s) => ({ ...s, [k]: v }));
-  const valid = f.title.trim() && f.clientName.trim();
+  const valid = f.title.trim() && f.clientName.trim() && (f.type !== OTHER || (f.typeOther || "").trim());
   const est = calcEstPayment(f.invoiceDate, f.paymentTerms);
   const seg = (on) => `flex-1 text-sm py-2 rounded-lg border transition-colors ${on ? "bg-slate-900 text-white border-slate-900" : "bg-white text-slate-600 border-slate-300"}`;
 
   return (
     <Modal title={job?.id ? "עריכת עבודה" : "עבודה חדשה"} onClose={onClose} wide>
-      <div className="space-y-5">
+      <div className="space-y-5 lg:grid lg:grid-cols-2 lg:gap-x-8 lg:gap-y-5 lg:space-y-0 lg:items-start">
         <Section title="פרטי העבודה">
           <Field label="כותרת העבודה *">
             <Input value={f.title} onChange={(e) => set("title", e.target.value)} placeholder="לדוגמה: התקנת ארון תקשורת – משרד קומה 2" />
@@ -519,6 +524,12 @@ function JobForm({ job, clients, onSave, onClose }) {
               </Select>
             </Field>
           </div>
+          {f.type === OTHER && (
+            <Field label="פירוט סוג העבודה *">
+              <Input autoFocus value={f.typeOther} onChange={(e) => set("typeOther", e.target.value)}
+                placeholder="כתבו כאן את סוג העבודה" />
+            </Field>
+          )}
           <div className="grid grid-cols-3 gap-3">
             <Field label="סטטוס">
               <Select value={f.status} onChange={(e) => set("status", e.target.value)}>
@@ -651,7 +662,7 @@ function JobDetail({ job, onClose, onEdit, onDelete, onAddDoc, onRemoveDoc, onSt
         <div className="flex items-start justify-between gap-3">
           <div>
             <h3 className="text-lg font-bold text-slate-900">{job.title}</h3>
-            <p className="text-slate-500">{job.type}</p>
+            <p className="text-slate-500">{jobType(job)}</p>
           </div>
           <span className={`text-sm px-3 py-1 rounded-full ${st.chip} shrink-0`}>{st.label}</span>
         </div>
@@ -1220,9 +1231,9 @@ function QuoteBuilder({ initial, clients, onSave, onBack }) {
 /* ----------------------------- רכיבי UI משותפים ----------------------------- */
 function Modal({ title, children, onClose, wide }) {
   return (
-    <div className="fixed inset-0 z-50 bg-slate-900/50 flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-50 bg-slate-900/50 flex items-end sm:items-center justify-center p-0 sm:p-6" onClick={onClose}>
       <div onClick={(e) => e.stopPropagation()}
-        className={`bg-white w-full ${wide ? "sm:max-w-2xl" : "sm:max-w-lg"} rounded-t-2xl sm:rounded-2xl shadow-xl max-h-screen overflow-y-auto`}>
+        className={`bg-white w-full ${wide ? "sm:max-w-5xl" : "sm:max-w-2xl"} rounded-t-2xl sm:rounded-2xl shadow-xl max-h-full overflow-y-auto`}>
         <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 sticky top-0 bg-white z-10">
           <h3 className="font-bold text-slate-800">{title}</h3>
           <button onClick={onClose} className="p-1 text-slate-400 hover:text-slate-700"><X size={20} /></button>
